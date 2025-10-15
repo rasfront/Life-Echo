@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Life Echo MVP</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main id="app">
+    <header class="topbar">
+      <h1>Life Echo</h1>
+    </header>
+
+    <section class="camera-section">
+      <video id="preview" autoplay playsinline muted></video>
+      <button id="recordBtn" class="primary">Записать 3s</button>
+      <div id="status" class="status" aria-live="polite"></div>
+    </section>
+
+    <section class="gallery-section">
+      <h2>Клипы</h2>
+      <ul id="clips" class="clips"></ul>
+    </section>
+  </main>
+
+  <template id="clip-item-template">
+    <li class="clip-item">
+      <button class="thumb-btn" title="Воспроизвести">
+        <img class="thumb" alt="thumbnail" />
+      </button>
+      <div class="meta">
+        <div class="title"></div>
+        <div class="time"></div>
+      </div>
+      <video class="player" controls></video>
+    </li>
+  </template>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
