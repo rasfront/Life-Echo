@@ -1,6 +1,6 @@
 // Simple offline cache for Life Echo static assets (GitHub Pages friendly)
 // Cache-first strategy with versioned cache
-const CACHE_NAME = 'life-echo-cache-v2';
+const CACHE_NAME = 'life-echo-cache-v3';
 const ASSETS = [
   './',
   './index.html',

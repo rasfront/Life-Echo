@@ -8,10 +8,13 @@ const UI = {
   status: document.getElementById('status'),
   clips: document.getElementById('clips'),
   template: document.getElementById('clip-item-template'),
+  exportBtn: document.getElementById('exportBtn'),
+  importInput: document.getElementById('importInput'),
 };
 
 let recorder;
 let storage;
+let deferredPrompt = null;
 
 function setStatus(text) {
   UI.status.textContent = text || '';
@@ -49,6 +52,21 @@ async function renderClips() {
       player.play().catch(()=>{});
       player.onended = () => { URL.revokeObjectURL(url); };
     });
+    // delete handler
+    const delBtn = node.querySelector('.delete-btn');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        const ok = confirm('Удалить этот клип без возможности восстановления?');
+        if (!ok) return;
+        try {
+          await storage.deleteClip(item.id);
+          await renderClips();
+        } catch (e) {
+          console.error(e);
+          setStatus('Не удалось удалить клип');
+        }
+      });
+    }
     UI.clips.appendChild(node);
   }
 }
@@ -73,12 +91,57 @@ async function onRecordClick() {
   }
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1000);
+}
+
+async function onExport() {
+  try {
+    setStatus('Экспорт...');
+    const blob = await storage.exportAll();
+    const ts = new Date().toISOString().replace(/[:.]/g,'-');
+    downloadBlob(blob, `life-echo-backup-${ts}.json`);
+    setStatus('Экспорт завершён');
+  } catch (e) {
+    console.error(e);
+    setStatus('Ошибка экспорта');
+  }
+}
+
+async function onImport(file) {
+  try {
+    setStatus('Импорт...');
+    await storage.importData(file);
+    await renderClips();
+    setStatus('Импорт завершён');
+  } catch (e) {
+    console.error(e);
+    setStatus('Ошибка импорта');
+  } finally {
+    UI.importInput.value = '';
+  }
+}
+
 async function main() {
   try {
     // Register service worker
     if ('serviceWorker' in navigator) {
       try { await navigator.serviceWorker.register('./service-worker.js'); } catch {}
     }
+    // Install prompt handling
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      // Optionally, you can show a UI button to install here.
+    });
+
     setStatus('Инициализация камеры...');
     storage = await Storage.init();
     recorder = await initRecorder(UI.preview);
@@ -92,5 +155,10 @@ async function main() {
 }
 
 UI.recordBtn.addEventListener('click', onRecordClick);
+UI.exportBtn?.addEventListener('click', onExport);
+UI.importInput?.addEventListener('change', (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if (f) onImport(f);
+});
 
 document.addEventListener('DOMContentLoaded', main);

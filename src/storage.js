@@ -21,12 +21,18 @@ export class Storage {
     return id;
   }
 
+  async deleteClip(id) {
+    const tx = this.db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    await reqToPromise(store.delete(id));
+    await txDone(tx);
+  }
+
   async listClips() {
     const tx = this.db.transaction(STORE, 'readonly');
     const store = tx.objectStore(STORE);
     const items = await reqToPromise(store.getAll());
     await txDone(tx);
-    // sort by timestamp desc
     items.sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp));
     return items.map(({ id, filename, timestamp }) => ({ id, filename, timestamp }));
   }
@@ -47,6 +53,36 @@ export class Storage {
     await txDone(tx);
     if (!item) throw new Error('Клип не найден');
     return item.thumb;
+  }
+
+  async exportAll() {
+    // Export as a simple JSON with ArrayBuffer data (no external libs)
+    const tx = this.db.transaction(STORE, 'readonly');
+    const store = tx.objectStore(STORE);
+    const items = await reqToPromise(store.getAll());
+    await txDone(tx);
+    const out = [];
+    for (const it of items) {
+      const blobBuf = await it.blob.arrayBuffer();
+      const thumbBuf = await it.thumb.arrayBuffer();
+      out.push({ id: it.id, filename: it.filename, timestamp: it.timestamp, blob: Array.from(new Uint8Array(blobBuf)), thumb: Array.from(new Uint8Array(thumbBuf)) });
+    }
+    const json = JSON.stringify({ version: 1, items: out });
+    return new Blob([json], { type: 'application/json' });
+  }
+
+  async importData(file) {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || !Array.isArray(data.items)) throw new Error('Неверный формат импорта');
+    const tx = this.db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    for (const it of data.items) {
+      const blob = new Blob([new Uint8Array(it.blob)], { type: 'video/webm' });
+      const thumb = new Blob([new Uint8Array(it.thumb)], { type: 'image/png' });
+      await reqToPromise(store.add({ filename: it.filename, timestamp: it.timestamp, blob, thumb }));
+    }
+    await txDone(tx);
   }
 }
 

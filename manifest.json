@@ -4,12 +4,23 @@
   "description": "Оффлайн MVP для записи 3‑секундных видеоклипов с камеры и локального хранения.",
   "lang": "ru-RU",
   "dir": "ltr",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "fullscreen",
   "background_color": "#0b0f14",
   "theme_color": "#111827",
   "orientation": "any",
   "categories": ["video", "productivity", "utilities"],
-  "icons": []
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

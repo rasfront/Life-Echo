@@ -13,6 +13,11 @@
   <main id="app">
     <header class="topbar">
       <h1>Life Echo</h1>
+      <div class="row">
+        <button id="exportBtn" class="btn-secondary" title="Экспорт всех клипов">Экспорт</button>
+        <label class="btn-secondary" for="importInput" title="Импорт клипов" style="display:inline-block;padding:10px 14px;border-radius:8px;cursor:pointer;">Импорт</label>
+        <input id="importInput" type="file" accept="application/json" style="display:none" />
+      </div>
     </header>
 
     <section class="camera-section">
@@ -36,7 +41,10 @@
         <div class="title"></div>
         <div class="time"></div>
       </div>
-      <video class="player" controls></video>
+      <div class="row">
+        <video class="player" controls></video>
+        <button class="btn-danger delete-btn" title="Удалить клип">Удалить</button>
+      </div>
     </li>
   </template>
 
