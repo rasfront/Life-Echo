@@ -1,0 +1,59 @@
+name: CI and Pages
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (for basic JS checks)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Basic syntax check for JS
+        run: |
+          node --version
+          # simple syntax checks
+          node -e "require('fs').readdirSync('src').forEach(f=>{if(f.endsWith('.js')){require('child_process').execSync('node --check '+require('path').join('src',f))}})"
+
+      - name: Verify required files exist
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f src/app.js
+          test -f src/recorder.js
+          test -f src/storage.js
+          test -f src/thumbnail.js
+
+      - name: Upload artifact (site)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
