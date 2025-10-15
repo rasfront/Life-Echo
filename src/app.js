@@ -36,7 +36,7 @@ async function renderClips() {
     node.querySelector('.title').textContent = item.filename;
     node.querySelector('.time').textContent = formatTS(item.timestamp);
     // thumbnail
-    const thumbBlob = await storage.getThumbnail(item.id);
+    const thumbBlob = await storage.getThumb(item.id);
     const img = node.querySelector('.thumb');
     img.src = URL.createObjectURL(thumbBlob);
     img.onload = ()=> URL.revokeObjectURL(img.src);
@@ -62,7 +62,7 @@ async function onRecordClick() {
     const thumb = await makeThumbnail(blob);
     const ts = Date.now();
     const name = `clip-${new Date(ts).toISOString().replace(/[:.]/g,'-')}.webm`;
-    await storage.saveClip({ filename: name, blob, timestamp: ts, thumbnail: thumb });
+    await storage.saveClip({ filename: name, blob, timestamp: ts, thumbBlob: thumb });
     setStatus('Клип сохранён');
     await renderClips();
   } catch (e) {
@@ -77,13 +77,13 @@ async function main() {
   try {
     // Register service worker
     if ('serviceWorker' in navigator) {
-      try { await navigator.serviceWorker.register('/service-worker.js'); } catch {}
+      try { await navigator.serviceWorker.register('./service-worker.js'); } catch {}
     }
     setStatus('Инициализация камеры...');
-    storage = new Storage();
-    await storage.init();
+    storage = await Storage.init();
     recorder = await initRecorder(UI.preview);
     setStatus('Готово');
+    await renderClips();
   } catch (e) {
     console.error(e);
     setStatus(e?.message || 'Ошибка инициализации');
