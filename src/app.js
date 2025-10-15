@@ -2,90 +2,95 @@ import { initRecorder } from './recorder.js';
 import { Storage } from './storage.js';
 import { makeThumbnail } from './thumbnail.js';
 
-// Minimal, robust bootstrapping for MVP
-const els = {
+const UI = {
   preview: document.getElementById('preview'),
   recordBtn: document.getElementById('recordBtn'),
   status: document.getElementById('status'),
   clips: document.getElementById('clips'),
-  tpl: document.getElementById('clip-item-template')
+  template: document.getElementById('clip-item-template'),
 };
 
-let recorder; // { start, stop, stream }
+let recorder;
 let storage;
 
-function setStatus(msg) {
-  els.status.textContent = msg || '';
+function setStatus(text) {
+  UI.status.textContent = text || '';
 }
 
-function disableBtn(disabled) {
-  els.recordBtn.disabled = !!disabled;
+function setBusy(busy) {
+  UI.recordBtn.disabled = !!busy;
 }
 
-async function init() {
-  try {
-    setStatus('Запрашиваем доступ к камере...');
-    recorder = await initRecorder(els.preview);
-    storage = await Storage.init();
-    setStatus('Готово. Нажмите “Записать 3s”.');
-    disableBtn(false);
-    els.recordBtn.addEventListener('click', onRecordClick);
-    await renderClips();
-  } catch (e) {
-    console.error(e);
-    setStatus('Ошибка инициализации: ' + e.message);
-    disableBtn(true);
+function formatTS(ts) {
+  const d = new Date(ts);
+  const pad = (n)=> String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+async function renderClips() {
+  const items = await storage.listClips();
+  UI.clips.innerHTML = '';
+  for (const item of items) {
+    const node = UI.template.content.firstElementChild.cloneNode(true);
+    node.dataset.id = item.id;
+    node.querySelector('.title').textContent = item.filename;
+    node.querySelector('.time').textContent = formatTS(item.timestamp);
+    // thumbnail
+    const thumbBlob = await storage.getThumbnail(item.id);
+    const img = node.querySelector('.thumb');
+    img.src = URL.createObjectURL(thumbBlob);
+    img.onload = ()=> URL.revokeObjectURL(img.src);
+    // play handler
+    node.querySelector('.thumb-btn').addEventListener('click', async () => {
+      const player = node.querySelector('.player');
+      const blob = await storage.getClip(item.id);
+      const url = URL.createObjectURL(blob);
+      player.src = url;
+      player.play().catch(()=>{});
+      player.onended = () => { URL.revokeObjectURL(url); };
+    });
+    UI.clips.appendChild(node);
   }
 }
 
 async function onRecordClick() {
-  disableBtn(true);
-  setStatus('Запись 3 секунды...');
   try {
-    const blob = await recorder.recordFor(3000); // returns Blob
-    setStatus('Сохраняем клип...');
-    const ts = new Date();
-    const filename = `clip-${ts.toISOString().replaceAll(':','').replaceAll('.','-')}.webm`;
-    const thumbBlob = await makeThumbnail(blob);
-    await storage.saveClip({ filename, blob, timestamp: ts.toISOString(), thumbBlob });
+    setBusy(true);
+    setStatus('Запись 3 сек...');
+    const blob = await recorder.recordFor(3000);
+    setStatus('Генерация миниатюры...');
+    const thumb = await makeThumbnail(blob);
+    const ts = Date.now();
+    const name = `clip-${new Date(ts).toISOString().replace(/[:.]/g,'-')}.webm`;
+    await storage.saveClip({ filename: name, blob, timestamp: ts, thumbnail: thumb });
     setStatus('Клип сохранён');
     await renderClips();
   } catch (e) {
     console.error(e);
-    setStatus('Ошибка записи: ' + e.message);
+    setStatus(e?.message || 'Ошибка записи');
   } finally {
-    disableBtn(false);
+    setBusy(false);
   }
 }
 
-async function renderClips() {
-  const clips = await storage.listClips();
-  els.clips.innerHTML = '';
-  for (const clip of clips) {
-    const li = els.tpl.content.firstElementChild.cloneNode(true);
-    const btn = li.querySelector('.thumb-btn');
-    const img = li.querySelector('.thumb');
-    const title = li.querySelector('.title');
-    const time = li.querySelector('.time');
-    const player = li.querySelector('.player');
-
-    title.textContent = clip.filename;
-    time.textContent = new Date(clip.timestamp).toLocaleString();
-    img.src = URL.createObjectURL(await storage.getThumb(clip.id));
-
-    let opened = false;
-    btn.addEventListener('click', async () => {
-      if (!opened) {
-        const blob = await storage.getClip(clip.id);
-        player.src = URL.createObjectURL(blob);
-        opened = true;
-      }
-      player.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      player.play().catch(()=>{});
-    });
-
-    els.clips.appendChild(li);
+async function main() {
+  try {
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      try { await navigator.serviceWorker.register('/service-worker.js'); } catch {}
+    }
+    setStatus('Инициализация камеры...');
+    storage = new Storage();
+    await storage.init();
+    recorder = await initRecorder(UI.preview);
+    setStatus('Готово');
+  } catch (e) {
+    console.error(e);
+    setStatus(e?.message || 'Ошибка инициализации');
+    setBusy(true);
   }
 }
 
-init();
+UI.recordBtn.addEventListener('click', onRecordClick);
+
+document.addEventListener('DOMContentLoaded', main);

@@ -1,0 +1,15 @@
+{
+  "name": "Life Echo — Запись клипов",
+  "short_name": "Life Echo",
+  "description": "Оффлайн MVP для записи 3‑секундных видеоклипов с камеры и локального хранения.",
+  "lang": "ru-RU",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#0b0f14",
+  "theme_color": "#111827",
+  "orientation": "any",
+  "categories": ["video", "productivity", "utilities"],
+  "icons": []
+}
