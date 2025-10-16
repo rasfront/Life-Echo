@@ -1,7 +1,7 @@
 // Recorder module: handles camera preview and 3s recording using MediaRecorder
-// Exports: initRecorder(videoEl) -> { recordFor(ms), stream }
+// Exports: initRecorder(videoEl, opts?) -> { recordFor(ms), stream, stop, facing }
 
-export async function initRecorder(videoEl) {
+export async function initRecorder(videoEl, opts = {}) {
   // Polyfill for Safari iOS: provide mediaDevices.getUserMedia via webkitGetUserMedia
   if (typeof navigator.mediaDevices === 'undefined') {
     navigator.mediaDevices = {};
@@ -20,9 +20,11 @@ export async function initRecorder(videoEl) {
     throw new Error('WebRTC не поддерживается или требуется запуск через HTTPS/localhost (iOS Safari)');
   }
 
+  const facing = opts.facingMode || 'user';
+
   // Ask for video (and optionally audio). Muted preview avoids feedback.
-  const constraintsPrimary = { video: { facingMode: 'user' }, audio: true };
-  const constraintsVideoOnly = { video: { facingMode: 'user' }, audio: false };
+  const constraintsPrimary = { video: { facingMode: facing }, audio: true };
+  const constraintsVideoOnly = { video: { facingMode: facing }, audio: false };
 
   let stream;
   try {
@@ -47,6 +49,13 @@ export async function initRecorder(videoEl) {
   } catch (_) {}
   videoEl.srcObject = stream;
 
+  function stop() {
+    try { videoEl.srcObject = null; } catch(_) {}
+    if (stream) {
+      stream.getTracks().forEach(t=>{ try { t.stop(); } catch(_) {} });
+    }
+  }
+
   async function recordFor(ms) {
     if (!window.MediaRecorder) throw new Error('MediaRecorder не поддерживается в этом браузере');
 
@@ -65,11 +74,12 @@ export async function initRecorder(videoEl) {
     }
 
     return new Promise((resolve, reject) => {
-      const onData = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      const chunksLocal = chunks;
+      const onData = e => { if (e.data && e.data.size) chunksLocal.push(e.data); };
       const onStop = () => {
         cleanup();
         const type = rec.mimeType || mime || 'video/webm';
-        resolve(new Blob(chunks, { type }));
+        resolve(new Blob(chunksLocal, { type }));
       };
       const onError = e => {
         const err = e?.error || e;
@@ -91,7 +101,7 @@ export async function initRecorder(videoEl) {
     });
   }
 
-  return { recordFor, stream };
+  return { recordFor, stream, stop, facing };
 }
 
 function selectMimeType() {

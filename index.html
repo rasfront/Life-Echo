@@ -21,6 +21,9 @@
     </header>
 
     <section class="camera-section">
+      <div class="camera-actions">
+        <button id="switchCam" title="Переключить камеру">🔄</button>
+      </div>
       <video id="preview" autoplay playsinline muted></video>
       <button id="recordBtn" class="primary">Записать 3s</button>
       <div id="status" class="status" aria-live="polite"></div>
@@ -41,8 +44,8 @@
         <div class="title"></div>
         <div class="time"></div>
       </div>
-      <div class="row">
-        <video class="player" controls></video>
+      <video class="player" controls hidden></video>
+      <div class="actions">
         <button class="btn-danger delete-btn" title="Удалить клип">Удалить</button>
       </div>
     </li>
