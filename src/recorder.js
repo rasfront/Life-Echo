@@ -16,30 +16,23 @@ export async function initRecorder(videoEl, opts = {}) {
   }
 
   // After polyfill, if still not available — give clear guidance
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserUserMedia === 'function') {
+    // no-op
+  }
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
     throw new Error('WebRTC не поддерживается или требуется запуск через HTTPS/localhost (iOS Safari)');
   }
 
   const facing = opts.facingMode || 'user';
 
-  // Ask for video (and optionally audio). Muted preview avoids feedback.
-  const constraintsPrimary = { video: { facingMode: facing }, audio: true };
+  // Request VIDEO ONLY to avoid mic prompts on iOS
   const constraintsVideoOnly = { video: { facingMode: facing }, audio: false };
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia(constraintsPrimary);
+    stream = await navigator.mediaDevices.getUserMedia(constraintsVideoOnly);
   } catch (e) {
-    // On iOS devices, audio can cause NotAllowedError if mic is blocked; try video-only fallback
-    if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError' || e.name === 'NotReadableError')) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraintsVideoOnly);
-      } catch (e2) {
-        throw normalizeGetUMError(e2);
-      }
-    } else {
-      throw normalizeGetUMError(e);
-    }
+    throw normalizeGetUMError(e);
   }
 
   // Prepare preview element for iOS inline playback behavior
@@ -63,9 +56,8 @@ export async function initRecorder(videoEl, opts = {}) {
     const mime = selectMimeType();
     let rec;
     try {
-      rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 96_000 });
+      rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_000_000 });
     } catch (e) {
-      // Fallback without explicit mime
       try {
         rec = new MediaRecorder(stream);
       } catch (e2) {
@@ -105,7 +97,6 @@ export async function initRecorder(videoEl, opts = {}) {
 }
 
 function selectMimeType() {
-  // iOS Safari supports MediaRecorder since 14.3+, but mime support is limited; allow auto
   const candidates = [
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
@@ -121,8 +112,8 @@ function selectMimeType() {
 function normalizeGetUMError(e) {
   if (!e) return new Error('Неизвестная ошибка доступа к камере');
   const name = e.name || '';
-  if (name === 'NotAllowedError' || name === 'SecurityError') return new Error('Доступ к камере/микрофону отклонён. Разрешите доступ в настройках браузера.');
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return new Error('Камера или микрофон не найдены. Подключите устройство и попробуйте снова.');
+  if (name === 'NotAllowedError' || name === 'SecurityError') return new Error('Доступ к камере отклонён. Разрешите доступ в настройках браузера.');
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return new Error('Камера не найдена. Подключите устройство и попробуйте снова.');
   if (name === 'NotReadableError') return new Error('Устройство камеры занято другой программой. Закройте её и повторите.');
   return e;
 }
