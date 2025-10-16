@@ -18,7 +18,8 @@ let storage;
 let deferredPrompt = null;
 let isRecording = false;
 let blinkLoopStop = null;
-let currentFacing = 'user';
+let currentFacing = localStorage.getItem('le-facing') || 'user';
+let cameraReady = false;
 
 function setStatus(text) {
   UI.status.textContent = text || '';
@@ -48,15 +49,12 @@ async function renderClips() {
     node.dataset.id = item.id;
     node.querySelector('.title').textContent = item.filename;
     node.querySelector('.time').textContent = formatTS(item.timestamp);
-    // thumbnail
     const thumbBlob = await storage.getThumb(item.id);
     const img = node.querySelector('.thumb');
     const url = URL.createObjectURL(thumbBlob);
     img.src = url;
     img.onload = ()=> URL.revokeObjectURL(url);
-    // play handler: show player on demand, hide others
     node.querySelector('.thumb-btn').addEventListener('click', async () => {
-      // hide any other visible players
       document.querySelectorAll('.clip-item .player:not([hidden])').forEach(v=>{
         v.pause(); v.removeAttribute('src'); v.load(); v.hidden = true;
       });
@@ -70,7 +68,6 @@ async function renderClips() {
       player.onended = cleanup;
       player.onpause = () => { if (player.currentTime === 0 || player.currentTime === player.duration) cleanup(); };
     });
-    // delete handler
     const delBtn = node.querySelector('.delete-btn');
     if (delBtn) {
       delBtn.addEventListener('click', async () => {
@@ -89,7 +86,30 @@ async function renderClips() {
   }
 }
 
+async function safeMakeThumbnail(blob) {
+  const timeoutMs = 8000;
+  let timer;
+  try {
+    const race = Promise.race([
+      makeThumbnail(blob),
+      new Promise((_,rej)=>{ timer = setTimeout(()=> rej(new Error('thumb-timeout')), timeoutMs); })
+    ]);
+    return await race;
+  } catch (e) {
+    const v = document.createElement('canvas');
+    v.width = 320; v.height = 180;
+    const b = await new Promise(res=> v.toBlob(res,'image/png'));
+    return b;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function onRecordClick() {
+  if (!cameraReady) {
+    await ensureCamera();
+    if (!cameraReady) return;
+  }
   if (isRecording) return;
   isRecording = true;
   try {
@@ -97,7 +117,7 @@ async function onRecordClick() {
     setStatus('Запись 3 сек...');
     const blob = await recorder.recordFor(3000);
     setStatus('Генерация миниатюры...');
-    const thumb = await makeThumbnail(blob);
+    const thumb = await safeMakeThumbnail(blob);
     const ts = Date.now();
     const name = `clip-${new Date(ts).toISOString().replace(/[:.]/g,'-')}.webm`;
     await storage.saveClip({ filename: name, blob, timestamp: ts, thumbBlob: thumb });
@@ -150,14 +170,28 @@ async function onImport(file) {
   }
 }
 
+async function ensureCamera() {
+  try {
+    if (recorder?.stream) { cameraReady = true; return; }
+    setStatus('Инициализация камеры...');
+    recorder = await initRecorder(UI.preview, { facingMode: currentFacing });
+    cameraReady = true;
+    if (!blinkLoopStop) blinkLoopStop = startBlinkDetection();
+    setStatus('Готово');
+  } catch (e) {
+    console.error(e);
+    setStatus(e?.message || 'Ошибка камеры');
+  }
+}
+
 async function switchCamera() {
   try {
     setStatus('Переключение камеры...');
-    // stop current
     try { recorder?.stop(); } catch(_) {}
     currentFacing = currentFacing === 'user' ? 'environment' : 'user';
-    recorder = await initRecorder(UI.preview, { facingMode: currentFacing });
-    setStatus('Готово');
+    localStorage.setItem('le-facing', currentFacing);
+    cameraReady = false;
+    await ensureCamera();
   } catch (e) {
     console.error(e);
     setStatus('Не удалось переключить камеру');
@@ -168,12 +202,22 @@ function startBlinkDetection() {
   const video = UI.preview;
   const cvs = document.createElement('canvas');
   const ctx = cvs.getContext('2d', { willReadFrequently: true });
-  let rafId = 0;
   let stopped = false;
-  let lastAvg = null;
+  let baseline = null;
   let lowCount = 0;
-  let armed = false; // fall detected, waiting for rise
-  const interval = 120; // ms
+  let riseCount = 0;
+  const interval = 70; // ms faster sampling
+  const minLow = 0, maxLow = 3; // allow instantaneous dips
+
+  const lastVals = [];
+  function pushVal(v) { lastVals.push(v); if (lastVals.length > 6) lastVals.shift(); }
+  function variance() {
+    if (lastVals.length < 3) return 0;
+    const m = lastVals.reduce((a,b)=>a+b,0)/lastVals.length;
+    return lastVals.reduce((a,b)=>a+(b-m)*(b-m),0)/lastVals.length;
+  }
+
+  let lastLowStart = 0;
 
   async function sample() {
     if (stopped) return;
@@ -181,69 +225,72 @@ function startBlinkDetection() {
       const w = video.videoWidth || 320;
       const h = video.videoHeight || 240;
       if (w && h) {
-        cvs.width = 160; // scale down to save CPU
-        cvs.height = Math.max(1, Math.floor((h * (1/3)) * (160 / w))); // top third scaled
-        const regionH = Math.floor(h / 3);
-        ctx.drawImage(video, 0, 0, w, regionH, 0, 0, cvs.width, cvs.height);
-        const data = ctx.getImageData(0, 0, cvs.width, cvs.height).data;
+        // ROI: 30%-60% height, 15%-85% width
+        const yStart = Math.floor(h * 0.30);
+        const roiH = Math.floor(h * 0.30);
+        const xStart = Math.floor(w * 0.15);
+        const roiW = Math.floor(w * 0.70);
+        const targetW = 160;
+        const targetH = Math.max(1, Math.floor(roiH * (targetW / roiW)));
+        cvs.width = targetW; cvs.height = targetH;
+        ctx.drawImage(video, xStart, yStart, roiW, roiH, 0, 0, targetW, targetH);
+        const data = ctx.getImageData(0, 0, targetW, targetH).data;
         let sum = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          // perceived luminance
-          sum += (0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2]);
-        }
+        for (let i = 0; i < data.length; i += 4) sum += (0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]);
         const avg = sum / (data.length / 4);
-        // EMA to smooth noise
-        lastAvg = lastAvg == null ? avg : (lastAvg * 0.7 + avg * 0.3);
-        const thr = (lastAvg * 0.75); // dynamic threshold 25% drop
+        pushVal(avg);
+        const motion = variance();
+        const adaptRate = lowCount ? 0.10 : 0.03;
+        baseline = baseline == null ? avg : (baseline * (1 - adaptRate) + avg * adaptRate);
+        const dropThreshold = baseline * 0.75; // 25% drop
 
-        if (!isRecording) {
-          if (!armed) {
-            // detect fall below threshold for 1-3 consecutive samples
-            if (avg < thr) lowCount++; else lowCount = 0;
-            if (lowCount >= 1 && lowCount <= 3) {
-              armed = true; // fall detected, now wait for rise
-            } else if (lowCount > 3) {
-              // too long low -> not a blink
-              lowCount = 0; armed = false;
-            }
+        if (!isRecording && motion < 120) {
+          if (avg < dropThreshold) {
+            if (lowCount === 0) lastLowStart = performance.now();
+            lowCount++;
+            riseCount = 0;
           } else {
-            // wait for brightness recovery
-            if (avg >= thr) {
-              // blink!
-              flashPreview();
-              onRecordClick();
-              armed = false; lowCount = 0;
+            // fast blink path: short dip-and-rise within ~300ms
+            const dur = performance.now() - lastLowStart;
+            if (lowCount >= minLow && lowCount <= maxLow && dur <= 320) {
+              riseCount++;
+              if (riseCount >= 1) {
+                flashPreview();
+                onRecordClick();
+                lowCount = 0; riseCount = 0;
+              }
+            } else {
+              if (lowCount > 6) { lowCount = 0; riseCount = 0; }
+              else if (lowCount > 0) { riseCount++; if (riseCount > 2) { lowCount = 0; riseCount = 0; } }
             }
           }
         } else {
-          // ignore during recording
-          armed = false; lowCount = 0;
+          lowCount = 0; riseCount = 0;
         }
       }
     } catch (_) {}
     setTimeout(sample, interval);
   }
   sample();
-  return () => { stopped = true; if (rafId) cancelAnimationFrame(rafId); };
+  return () => { stopped = true; };
 }
 
 async function main() {
   try {
-    // Register service worker
     if ('serviceWorker' in navigator) {
       try { await navigator.serviceWorker.register('./service-worker.js'); } catch {}
     }
-    // Install prompt handling
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
     });
 
-    setStatus('Инициализация камеры...');
     storage = await Storage.init();
-    recorder = await initRecorder(UI.preview, { facingMode: currentFacing });
-    blinkLoopStop = startBlinkDetection();
-    setStatus('Готово');
+
+    UI.preview.addEventListener('click', ensureCamera, { once: true });
+    UI.recordBtn.addEventListener('click', ensureCamera, { once: true });
+    ensureCamera();
+
     await renderClips();
   } catch (e) {
     console.error(e);
