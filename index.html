@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,30 +14,33 @@
     <header class="topbar">
       <h1>Life Echo</h1>
       <div class="row">
-        <button id="exportBtn" class="btn-secondary" title="Экспорт всех клипов">Экспорт</button>
-        <label class="btn-secondary" for="importInput" title="Импорт клипов" style="display:inline-block;padding:10px 14px;border-radius:8px;cursor:pointer;">Импорт</label>
+        <button id="exportBtn" class="btn-secondary" title="Export all clips">Export</button>
+        <label class="btn-secondary" for="importInput" title="Import clips" style="display:inline-block;padding:10px 14px;border-radius:8px;cursor:pointer;">Import</label>
         <input id="importInput" type="file" accept="application/json" style="display:none" />
       </div>
     </header>
 
     <section class="camera-section">
       <div class="camera-actions">
-        <button id="switchCam" title="Переключить камеру">🔄</button>
+        <button id="switchCam" title="Switch camera">🔄</button>
       </div>
       <video id="preview" autoplay playsinline muted></video>
-      <button id="recordBtn" class="primary">Записать 3s</button>
+      <div class="toggles" style="display:flex;gap:12px;justify-content:center;margin:8px 0;">
+        <label><input type="checkbox" id="toggleBlink" checked /> Blink trigger</label>
+      </div>
+      <button id="recordBtn" class="primary">Record 3s</button>
       <div id="status" class="status" aria-live="polite"></div>
     </section>
 
     <section class="gallery-section">
-      <h2>Клипы</h2>
+      <h2>Clips</h2>
       <ul id="clips" class="clips"></ul>
     </section>
   </main>
 
   <template id="clip-item-template">
     <li class="clip-item">
-      <button class="thumb-btn" title="Воспроизвести">
+      <button class="thumb-btn" title="Play clip">
         <img class="thumb" alt="thumbnail" />
       </button>
       <div class="meta">
@@ -46,7 +49,7 @@
       </div>
       <video class="player" controls hidden></video>
       <div class="actions">
-        <button class="btn-danger delete-btn" title="Удалить клип">Удалить</button>
+        <button class="btn-danger delete-btn" title="Delete clip">Delete</button>
       </div>
     </li>
   </template>

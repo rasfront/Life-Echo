@@ -20,7 +20,7 @@ export async function initRecorder(videoEl, opts = {}) {
     // no-op
   }
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-    throw new Error('WebRTC не поддерживается или требуется запуск через HTTPS/localhost (iOS Safari)');
+    throw new Error('WebRTC is not supported or requires HTTPS/localhost (iOS Safari)');
   }
 
   const facing = opts.facingMode || 'user';
@@ -50,7 +50,7 @@ export async function initRecorder(videoEl, opts = {}) {
   }
 
   async function recordFor(ms) {
-    if (!window.MediaRecorder) throw new Error('MediaRecorder не поддерживается в этом браузере');
+    if (!window.MediaRecorder) throw new Error('MediaRecorder is not supported in this browser');
 
     const chunks = [];
     const mime = selectMimeType();
@@ -61,7 +61,7 @@ export async function initRecorder(videoEl, opts = {}) {
       try {
         rec = new MediaRecorder(stream);
       } catch (e2) {
-        throw new Error('Не удалось создать MediaRecorder');
+        throw new Error('Failed to create MediaRecorder');
       }
     }
 
@@ -110,10 +110,10 @@ function selectMimeType() {
 }
 
 function normalizeGetUMError(e) {
-  if (!e) return new Error('Неизвестная ошибка доступа к камере');
+  if (!e) return new Error('Unknown camera access error');
   const name = e.name || '';
-  if (name === 'NotAllowedError' || name === 'SecurityError') return new Error('Доступ к камере отклонён. Разрешите доступ в настройках браузера.');
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return new Error('Камера не найдена. Подключите устройство и попробуйте снова.');
-  if (name === 'NotReadableError') return new Error('Устройство камеры занято другой программой. Закройте её и повторите.');
+  if (name === 'NotAllowedError' || name === 'SecurityError') return new Error('Camera access denied. Allow it in browser settings.');
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return new Error('Camera not found. Connect a device and try again.');
+  if (name === 'NotReadableError') return new Error('Camera device is busy in another app. Close it and retry.');
   return e;
 }
